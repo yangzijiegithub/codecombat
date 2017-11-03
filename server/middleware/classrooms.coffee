@@ -15,6 +15,7 @@ parse = require '../commons/parse'
 LevelSession = require '../models/LevelSession'
 User = require '../models/User'
 CourseInstance = require '../models/CourseInstance'
+Prepaid = require '../models/Prepaid'
 TrialRequest = require '../models/TrialRequest'
 sendwithus = require '../sendwithus'
 co = require 'co'
@@ -146,25 +147,42 @@ module.exports =
   deleteMember: wrap (req, res, next) ->
     userID = req.params.memberID
     throw new errors.UnprocessableEntity('Member ID must be a MongoDB ID') unless utils.isID(userID)
-    Classroom.findById req.params.classroomID, (err, classroom) =>
-      throw new errors.InternalServerError('Database error, ' + err) if err
-      throw new errors.NotFound('No classroom found with that ID') if not classroom
-      if not _.any(classroom.get('members'), (memberID) -> memberID.toString() is userID)
-        throw new errors.Forbidden()
-      ownsClassroom = classroom.get('ownerID').equals(req.user.get('_id'))
-      removingSelf = userID is req.user.id
-      unless ownsClassroom or removingSelf
-        throw new errors.Forbidden()
-      # # Redundant with above error case?
-      # alreadyNotInClassroom = not _.any classroom.get('members') or [], (memberID) -> memberID.toString() is userID
-      # return @sendSuccess(res, @formatEntity(req, classroom)) if alreadyNotInClassroom
-      
-      members = _.clone(classroom.get('members'))
-      members = (m for m in members when m.toString() isnt userID)
-      classroom.set('members', members)
-      classroom.save (err, classroom) =>
-        throw new errors.InternalServerError(err) if err
-        res.status(200).send(classroom.toObject())
+    try
+      classroom = yield Classroom.findById req.params.classroomID
+    catch err
+      throw new errors.InternalServerError('Error finding classroom by ID: ' + err)
+    throw new errors.NotFound('No classroom found with that ID') if not classroom
+    if not _.any(classroom.get('members'), (memberID) -> memberID.toString() is userID)
+      throw new errors.Forbidden()
+    ownsClassroom = classroom.get('ownerID').equals(req.user.get('_id'))
+    removingSelf = userID is req.user.id
+    unless ownsClassroom or removingSelf
+      throw new errors.Forbidden()
+
+    try
+      otherClassrooms = yield Classroom.find { members: mongoose.Types.ObjectId(userID), _id: {$ne: classroom.get('_id')} }
+    catch err
+      throw new errors.InternalServerError('Error finding other classrooms by memberID: ' + err)
+  
+    # If the student is being removed from their very last classroom, unenroll them
+    user = yield User.findOne({ _id: mongoose.Types.ObjectId(userID) })
+    if user.isEnrolled() and otherClassrooms.length is 0
+      # log.debug "User removed from their last classroom; auto-revoking:", userID
+      prepaid = yield Prepaid.findOne({ "redeemers.userID": mongoose.Types.ObjectId(userID) })
+      if prepaid
+        unless prepaid.canBeUsedBy(req.user._id)
+          throw new errors.Forbidden('You may not revoke enrollments you do not own.')
+        yield prepaid.revoke(user)
+
+    members = _.clone(classroom.get('members'))
+    members = (m for m in members when m.toString() isnt userID)
+    classroom.set('members', members)
+    try
+      classroom = yield classroom.save()
+    catch err
+      console.log err
+      throw new errors.InternalServerError(err)
+    res.status(200).send(classroom.toObject())
 
   fetchPlaytimes: wrap (req, res, next) ->
     # For given courseID, returns array of course/level IDs and slugs, and an array of recent level sessions
