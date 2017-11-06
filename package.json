@@ -36,7 +36,7 @@
     "postinstall": "bower install && webpack",
     "webpack": "webpack",
     "bower": "bower",
-    "dev": "webpack --watch & npm run nodemon",
+    "dev": "webpack --watch & npm run nodemon & webpack-dev-server",
     "nodemon": "nodemon",
     "jasmine-node": "jasmine-node",
     "multicore": "coffee multicore.coffee",
