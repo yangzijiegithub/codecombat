@@ -503,17 +503,14 @@ describe 'DELETE /db/classroom/:classroomID/members/:memberID', ->
       @admin = yield utils.initAdmin()
       yield utils.loginUser(@admin)
       @prepaid = yield utils.makePrepaid({ creator: @teacher.id })
-      console.log "Prepaid: ", @prepaid
       yield utils.loginUser(@teacher)
       yield utils.addRedeemerToPrepaid(@prepaid, @student)
       @prepaid = yield Prepaid.findById(@prepaid.id)
-      console.log "Prepaid: ", @prepaid
       done()
 
     describe 'and the user is in other classrooms', ->
       beforeEach utils.wrap (done) ->
         @classroom2 = yield utils.makeClassroom({}, {members:[@student]})
-        console.log "classroom2:", @classroom2.id
         done()
 
       it 'does NOT revoke the license', utils.wrap (done) ->
@@ -527,11 +524,9 @@ describe 'DELETE /db/classroom/:classroomID/members/:memberID', ->
     describe 'and the user is NOT in any other classrooms', ->
       it 'revokes the license', utils.wrap (done) ->
         expect(@prepaid.get('redeemers').length).toBe(1)
-        console.log @prepaid
         [res, body] = yield request.delAsync { @url }
         expect(res.statusCode).toBe(200)
         prepaid = yield Prepaid.findById(@prepaid.id)
-        console.log prepaid
         expect(prepaid.get('redeemers').length).toBe(0)
         done()
 
