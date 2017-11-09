@@ -15,12 +15,11 @@ module.exports = class RemoveStudentModal extends ModalView
     @supermodel.trackRequest @user.fetch()
     @courseInstances = options.courseInstances
     request = $.ajax("/db/classroom/#{@classroom.id}/members/#{@user.id}/is-auto-revokable")
-    @supermodel.trackRequest request # TODO: Check if a license will be returned
+    @supermodel.trackRequest request
     request.then (data) =>
-      @willRevokeLicense = data.willRevokeLicense #&& data.isOriginalTeacher
+      @willRevokeLicense = data.willRevokeLicense
     , (err) =>
-      console.log err, arguments
-      debugger
+      console.error err, arguments
 
   onClickRemoveStudentButton: ->
     @$('#remove-student-buttons').addClass('hide')
