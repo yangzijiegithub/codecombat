@@ -47,6 +47,13 @@ PrepaidSchema.methods.canReplaceUserPrepaid = (otherPrepaid) ->
 PrepaidSchema.methods.canBeUsedBy = (userID) ->
   @get('creator').equals(userID) or _.find(@get('joiners'), (joiner) -> joiner.userID.equals(userID) )
 
+PrepaidSchema.methods.wasStudentEnrolledByTeacher = (userID, teacherID) ->
+  redemption = _.find @get('redeemers'), (r) =>
+    r.userID.equals mongoose.Types.ObjectId(userID)
+  # If teacherID is missing; it's legacy and was assigned by the owner
+  return (redemption.teacherID.equals(teacherID) or
+    (not redemption.teacherID and @.get('ownerID').equals(teacherID)))
+
 PrepaidSchema.pre('save', (next) ->
   @set('exhausted', @get('maxRedeemers') <= _.size(@get('redeemers')))
   if not @get('code')

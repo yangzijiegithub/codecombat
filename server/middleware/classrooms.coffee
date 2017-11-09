@@ -144,6 +144,41 @@ module.exports =
 
     res.status(200).send(memberObjects)
 
+  checkIsAutoRevokable: wrap (req, res, next) ->
+    userID = req.params.memberID
+    throw new errors.UnprocessableEntity('Member ID must be a MongoDB ID') unless utils.isID(userID)
+    try
+      classroom = yield Classroom.findById req.params.classroomID
+    catch err
+      throw new errors.InternalServerError('Error finding classroom by ID: ' + err)
+    throw new errors.NotFound('No classroom found with that ID') if not classroom
+    if not _.any(classroom.get('members'), (memberID) -> memberID.toString() is userID)
+      throw new errors.Forbidden()
+    ownsClassroom = classroom.get('ownerID').equals(req.user.get('_id'))
+    removingSelf = userID is req.user.id
+    unless ownsClassroom or removingSelf
+      throw new errors.Forbidden()
+
+    try
+      otherClassrooms = yield Classroom.find { members: mongoose.Types.ObjectId(userID), _id: {$ne: classroom.get('_id')} }
+    catch err
+      throw new errors.InternalServerError('Error finding other classrooms by memberID: ' + err)
+  
+    # If the student is being removed from their very last classroom, unenroll them
+    user = yield User.findOne({ _id: mongoose.Types.ObjectId(userID) })
+    if user.isEnrolled() and otherClassrooms.length is 0
+      # log.debug "User removed from their last classroom; auto-revoking:", userID
+      prepaid = yield Prepaid.findOne({ type: "course", "redeemers.userID": mongoose.Types.ObjectId(userID) })
+      if prepaid
+        if not prepaid.canBeUsedBy(req.user._id)
+          return res.status(200).send({ willRevokeLicense: false })
+
+        # This logic is slightly different than the removing endpoint,
+        # since we don't want to tell a teacher it will be revoked unless it's *their* license
+        return res.status(200).send({ willRevokeLicense: true })
+
+    return res.status(200).send({ willRevokeLicense: false })
+
   deleteMember: wrap (req, res, next) ->
     userID = req.params.memberID
     throw new errors.UnprocessableEntity('Member ID must be a MongoDB ID') unless utils.isID(userID)
@@ -168,10 +203,8 @@ module.exports =
     user = yield User.findOne({ _id: mongoose.Types.ObjectId(userID) })
     if user.isEnrolled() and otherClassrooms.length is 0
       # log.debug "User removed from their last classroom; auto-revoking:", userID
-      prepaid = yield Prepaid.findOne({ "redeemers.userID": mongoose.Types.ObjectId(userID) })
+      prepaid = yield Prepaid.findOne({ type: "course", "redeemers.userID": mongoose.Types.ObjectId(userID) })
       if prepaid
-        unless prepaid.canBeUsedBy(req.user._id)
-          throw new errors.Forbidden('You may not revoke enrollments you do not own.')
         yield prepaid.revoke(user)
 
     members = _.clone(classroom.get('members'))
