@@ -155,8 +155,7 @@ module.exports =
     if not _.any(classroom.get('members'), (memberID) -> memberID.toString() is userID)
       throw new errors.Forbidden()
     ownsClassroom = classroom.get('ownerID').equals(req.user.get('_id'))
-    removingSelf = userID is req.user.id
-    unless ownsClassroom or removingSelf
+    unless ownsClassroom
       throw new errors.Forbidden()
 
     try
@@ -190,8 +189,7 @@ module.exports =
     if not _.any(classroom.get('members'), (memberID) -> memberID.toString() is userID)
       throw new errors.Forbidden()
     ownsClassroom = classroom.get('ownerID').equals(req.user.get('_id'))
-    removingSelf = userID is req.user.id
-    unless ownsClassroom or removingSelf
+    unless ownsClassroom
       throw new errors.Forbidden()
 
     try
